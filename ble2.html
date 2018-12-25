@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>WebBluetooth - NefryBT - X'masTree (2)</title>
+        <meta name="description" content="北京ダック">
+        <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    </head>
+
+    <body>
+        <p>ブラウザ上のマウスの動きでクリスマスツリーのLEDを制御する</p>
+        <button id="btn_ble_ctrl">接続</button>
+        <hr>
+        X:<input type="text" id="mouse_x"> Diff:<input type="text" id="mouse_x_diff">
+        <br>
+        Y:<input type="text" id="mouse_y"> DIff:<input type="text" id="mouse_y_diff">
+
+        <script>
+            const CUSTOM_SERVICE_UUID = "2fb65514-1a38-4597-bf63-590e175a262f";
+            const CHARACTERISTIC_UUID = "1b68902e-da10-40d8-a58f-c68da82c3021";
+            var dev = false; // BluetoothRemoteGATTDevice？がはいるとおもう
+            var ble = false; // BluetoothRemoteGATTCharacteristicオブジェクト
+            var posX; // マウスX座標
+            var posY; // マウスY座標
+            var ledOff = true; // 全消灯かそうでないか
+
+            // BLEデバイス検出
+            function getBleDevice(jqObj) {
+                jqObj.text('デバイス選択中...');
+                navigator.bluetooth.requestDevice({
+                    acceptAllDevices:true,
+                    optionalServices:[CUSTOM_SERVICE_UUID]
+                }).then(device => {
+                    // 接続します
+                    jqObj.text('接続中...');
+                    console.log('Name:      ' + device.name);
+                    console.log('Id:        ' + device.id);
+                    console.log('Connected: ' + device.gatt.connected);
+                    dev = device;
+                    return device.gatt.connect();
+                }).then(server =>{
+                    // サービスの指定
+                    jqObj.text('サービス検索中...');
+                    console.log('-> getPrimaryService() ..');
+                    return server.getPrimaryService(CUSTOM_SERVICE_UUID);
+                }).then(service =>{
+                    // キャラクタリスティックの指定
+                    jqObj.text('キャラクタリスティック検索中...');
+                    console.log('-> getCharacteristic() ..');
+                    return service.getCharacteristic(CHARACTERISTIC_UUID);
+                }).then(characteristic => {
+                    // ここまできたら接続はOK
+                    jqObj.text('切断'); // 開始ボタンの文字列を変更
+                    console.log(characteristic);
+                    ble = characteristic;
+                    ble.writeValue((new TextEncoder).encode('X0')); // リセット送信
+                    return characteristic;
+                }).catch(error => {
+                    console.log('[Error] ' + error);
+                    if (!device.gatt.connected) {
+                        jqObj.text('接続失敗');
+                    }
+                    return false;
+                });
+            }
+
+            // ボタンクリックで接続または切断
+            $('#btn_ble_ctrl').click(function(e) {
+                if (ble) {
+                    // 接続済->切断
+                    ble.writeValue((new TextEncoder).encode('X0')); // リセット送信
+                    $(this).text('接続'); // 次回接続用
+                    ble = false;
+                    dev.gatt.disconnect(); // 切断処理
+                } else {
+                    // 未接続->接続
+                    getBleDevice($(this));
+                }
+            });
+
+            // マウス位置取得
+            $(function(){
+                $(window).mousemove(function() {
+                    // 差分取得
+                    var diffX = posX-event.clientX;
+                    var diffY = posY-event.clientY;
+
+                    // 接続済みのときだけ送る
+                    if (ble) {
+                        // Aチャンネル
+                        if (diffX >= 10) {
+                            ble.writeValue((new TextEncoder).encode('A0')); // 送信
+                            ledOff = false;
+                        } else if (diffX <= -10) {
+                            ble.writeValue((new TextEncoder).encode('A1')); // 送信
+                            ledOff = false;
+                        }
+                        // Bチャンネル
+                        if (diffY >= 10) {
+                            ble.writeValue((new TextEncoder).encode('B0')); // 送信
+                            ledOff = false;
+                        } else if (diffY <= -10) {
+                            ble.writeValue((new TextEncoder).encode('B1')); // 送信
+                            ledOff = false;
+                        }
+                        // Cチャンネル
+                        if (diffX * diffY >= 50) {
+                            ble.writeValue((new TextEncoder).encode('C0')); // 送信
+                            ledOff = false;
+                        } else if (diffX * diffY <= -50) {
+                            ble.writeValue((new TextEncoder).encode('C1')); // 送信
+                            ledOff = false;
+                        } else {
+                            // いずれかのLEDがOnで移動量が規定未満のときに1回だけOffを送る
+                            if (!ledOff) {
+                                ble.writeValue((new TextEncoder).encode('X0'));
+                                ledOff = true;
+                            }
+                        }
+                    }
+
+                    // ブラウザ側の表示を更新
+                    $('#mouse_x_diff').val(diffX);
+                    $('#mouse_y_diff').val(diffY);
+                    $('#mouse_x').val(event.clientX);
+                    $('#mouse_y').val(event.clientY);
+                    posX = event.clientX;
+                    posY = event.clientY;
+                });
+            });
+
+        </script>
+
+    </body>
+</html>

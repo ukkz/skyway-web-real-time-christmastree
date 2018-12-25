@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>WebBluetooth - NefryBT - X'masTree</title>
+        <meta name="description" content="七面鳥たべたい">
+        <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    </head>
+
+    <body>
+        <p>ブラウザからWebBluetoothを介してNefryBTに接続されたクリスマスツリーのLEDを制御する</p>
+        <button id="btn_start">接続開始</button>
+        <hr>
+        <button id="btn_A" class="btn_tests" value="A0">A : off</button>
+        <button id="btn_B" class="btn_tests" value="B0">B : off</button>
+        <button id="btn_C" class="btn_tests" value="C0">C : off</button>
+        <button id="btn_all_off" value="X0">全消灯</button>
+
+        <script>
+            // サービスとキャラクタリスティックのUUIDはNefryに書き込んだものと同じです
+            const CUSTOM_SERVICE_UUID = "2fb65514-1a38-4597-bf63-590e175a262f";
+            const CHARACTERISTIC_UUID = "1b68902e-da10-40d8-a58f-c68da82c3021";
+            var ble = false; // BluetoothRemoteGATTCharacteristicオブジェクトがはいる
+
+            // BLEデバイス検出
+            function getBleDevice(jqObj) {
+                jqObj.text('BLEデバイスを検索しています...');
+                navigator.bluetooth.requestDevice({
+                    acceptAllDevices:true,
+                    optionalServices:[CUSTOM_SERVICE_UUID]
+                }).then(device => {
+                    // 接続します
+                    jqObj.text('BLEデバイスに接続しています...');
+                    console.log('Name:      ' + device.name);
+                    console.log('Id:        ' + device.id);
+                    console.log('Connected: ' + device.gatt.connected);
+                    return device.gatt.connect();
+                }).then(server =>{
+                    // サービスの指定
+                    jqObj.text('サービスを検索しています...');
+                    console.log('-> getPrimaryService() ..');
+                    return server.getPrimaryService(CUSTOM_SERVICE_UUID);
+                }).then(service =>{
+                    // キャラクタリスティックの指定
+                    jqObj.text('キャラクタリスティックを検索しています...');
+                    console.log('-> getCharacteristic() ..');
+                    return service.getCharacteristic(CHARACTERISTIC_UUID);
+                }).then(characteristic => {
+                    // ここまできたら接続はOK
+                    jqObj.text('接続されました'); // 開始ボタンの文字列を変更
+                    console.log(characteristic);
+                    ble = characteristic;
+                    return characteristic;
+                }).catch(error => {
+                    console.log('[Error] ' + error);
+                    if (!device.gatt.connected) {
+                        jqObj.text('接続失敗');
+                    }
+                    return false;
+                });
+            }
+
+            // ボタンクリックで開始
+            $('#btn_start').click(function(e) {
+                getBleDevice($(this));
+            });
+
+            // ブラウザからの操作
+            $('.btn_tests').click(function(e) {
+                if (ble) {
+                    // 接続済み
+                    var pattern = $(this).val().charAt(0);
+                    var onoff = $(this).val().charAt(1);
+                    
+                    // 切り替え
+                    var btn_str;
+                    if (onoff == '0') {
+                        onoff = 1;
+                        btn_str = pattern + ' : ■□';
+                    } else {
+                        onoff = 0;
+                        btn_str = pattern + ' : □■';
+                    }
+
+                    // ボタン表示変更とvalue値の更新
+                    $(this).text(btn_str);
+                    var newval = pattern + onoff;
+                    $(this).val(newval);
+
+                    // BLE送信
+                    ble.writeValue((new TextEncoder).encode(newval));
+                } else {
+                    // 未接続
+                    $(this).text('未接続');
+                }
+            });
+
+            // 全消灯
+            $('#btn_all_off').click(function(e) {
+                $('#btn_A').text('A : off');
+                $('#btn_B').text('B : off');
+                $('#btn_C').text('C : off');
+                // BLE送信
+                ble.writeValue((new TextEncoder).encode('X0'));
+            });
+        </script>
+
+    </body>
+</html>
